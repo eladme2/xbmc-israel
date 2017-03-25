@@ -14,10 +14,11 @@
     @author: shai
 '''
 import urllib2, json
-from APModel import APModel
+from APVodItem import APVodItem
 import resources.m3u8 as m3u8
+import xbmc
 
-class DQAPVodItem(APModel):
+class DQAPVodItem(APVodItem):
     '''
     classdocs
     '''
@@ -31,37 +32,45 @@ class DQAPVodItem(APModel):
     __hls_cookie = ''
     __isHls = False
     __airDate = ''
+    __videoId = 0
     
     def __init__(self, params = {}):
         self.innerDictionary = params
         try:
+            xbmc.log("DQAPVodItem c`tor", xbmc.LOGDEBUG)
             #self.__free = self.get('free')
             self.__id = str(self.get('ID'))
             #self.__description = self.get('summary')
             self.__title = self.get('title')
             #self.__thumbnail = self.get('thumbnail')
-            self.__stream = params['video']['src']
-	    self.__airDate = self.get('publish_date')
-	    #self.__season = self.get('season_name')
-	except:
-	    pass
 
-	# for the new incarnation of the plugin we'll have an images_json section
-	imagesStr = self.get('images_json')
-	#print '***** imagesStr is: ' + imagesStr
-	if None != imagesStr and '' != imagesStr:
-	    images = json.loads(imagesStr, 'utf-8')
+            # now this is a quick hack
+            # using the videoId to access master.m3u8
+            # low res video: self.__stream = params['video']['src']
+            self.__videoId = params['video']['videoID']
+            self.__stream = "http://c.brightcove.com/services/mobile/streaming/index/master.m3u8?videoId=" + self.__videoId
+            xbmc.log("DQAPVodItem strem = " + self.__stream, xbmc.LOGDEBUG)
+            self.__airDate = self.get('publish_date')
+            #self.__season = self.get('season_name')
+        except:
+            pass
 
-	    # find large thumbnail
-	    if 'large_thumbnail' in images:
-	        self.__thumbnail = images['large_thumbnail']
-	    if self.__thumbnail == '' and 'Carousel_smartphone_image' in images:
-	        # if not, try carousel image (based on new UI)
-	        self.__thumbnail = images['Carousel_smartphone_image']
+        # for the new incarnation of the plugin we'll have an images_json section
+        imagesStr = self.get('images_json')
+        #print '***** imagesStr is: ' + imagesStr
+        if None != imagesStr and '' != imagesStr:
+            images = json.loads(imagesStr, 'utf-8')
 
-        #except:
-        #    pass
-        
+            # find large thumbnail
+            if 'large_thumbnail' in images:
+                self.__thumbnail = images['large_thumbnail']
+            if self.__thumbnail == '' and 'Carousel_smartphone_image' in images:
+                # if not, try carousel image (based on new UI)
+                self.__thumbnail = images['Carousel_smartphone_image']
+
+            #except:
+            #    pass
+            
     def isFree(self):
         return self.__free
     
@@ -140,12 +149,12 @@ class DQAPVodItem(APModel):
 
     def cleanCookie(self, cookieStr):
         cookies = cookieStr.split(';')
-	authCookie = ''
-	for cookie in cookies:
-	    pos = cookie.lower().find('hdea_l')
-	    if pos >= 0:
-		authCookie = authCookie + cookie[pos:] + '; '
-	    pos = cookie.lower().find('hdea_s')
-	    if pos >= 0:
-		authCookie = authCookie + cookie[pos:] + '; '
-	return authCookie
+        authCookie = ''
+        for cookie in cookies:
+            pos = cookie.lower().find('hdea_l')
+            if pos >= 0:
+                authCookie = authCookie + cookie[pos:] + '; '
+            pos = cookie.lower().find('hdea_s')
+            if pos >= 0:
+                authCookie = authCookie + cookie[pos:] + '; '
+        return authCookie

@@ -27,6 +27,7 @@
 import urllib, urllib2, re, os, sys, unicodedata, random, json
 import xbmcaddon, xbmc, xbmcplugin, xbmcgui
 from bs4 import BeautifulSoup
+import resources.m3u8 as m3u8
 
 ##General vars
 __plugin__ = "Reshet"
@@ -82,8 +83,15 @@ def getLinkUrlFromReshetScheme(reshetUrl):
             return urllib.unquote_plus( parts[1] )
     return None
 
+
+def urlEncodeNonAscii(b):
+    return re.sub('[\x80-\xFF]', lambda c: '%%%02x' % ord(c.group(0)), b)
+
+
 def getPageDataQueryJsonObject(url):
-    response = urllib2.urlopen(url)
+
+    xbmc.log("getPageDataQueryJsonObject url = " + url, xbmc.LOGDEBUG)
+    response = urllib2.urlopen(urlEncodeNonAscii(url).replace(" ", "+"))
 
     unicode_text = response.read().decode('utf-8')
 
@@ -131,6 +139,7 @@ def getCategory(categoryId, categoryLink = None):
         # Push sub-cats
         sections = data['Content']['PageGrid']
         for section in sections:
+            xbmc.log('adding item view DQAPCategory...')
             my_category = DQAPCategory(section['GridTitle'])
             addCategoryView(my_category)
 
@@ -138,6 +147,7 @@ def getCategory(categoryId, categoryLink = None):
             posts = section['Posts']
             for video in posts:
                 if video['video'] is not None:
+                    xbmc.log('adding item view DQAPVodItem...', xbmc.LOGDEBUG)
                     item = DQAPVodItem(video)
                     addItemView(item)
         return
@@ -164,6 +174,7 @@ def getCategory(categoryId, categoryLink = None):
                 addCategoryView(category)
     elif (categories.hasVideoitems()):
         for item in categories.getVodItems():
+            xbmc.log('adding item view APVodItem...')
             addItemView(item)
         xbmcplugin.setContent(int(sys.argv[1]), 'episodes')
         xbmc.executebuiltin("Container.SetViewMode(504)")
@@ -173,7 +184,7 @@ def getItem(itemId, link = None):
     xbmc.log('ItemURL --> %s' % (itemLoader.getQuery()), xbmc.LOGDEBUG)
     jsonItemDictionary = itemLoader.loadURL()
     if link is not None:
-        xbmc.log('getItem to play using link ' + link)
+        xbmc.log('getItem to play using link ' + link, xbmc.LOGDEBUG)
         item = DQAPVodItem({})
         playMovie(item, link)
     else:
@@ -220,11 +231,70 @@ def addItemView(item):
     listItem.setProperty('IsPlayable', 'true')
     return xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=_url, listitem=listItem, isFolder=False)
 
+def cleanCookie(cookieStr):
+    cookies = cookieStr.split(';')
+    authCookie = ''
+    for cookie in cookies:
+        pos = cookie.lower().find('hdea_l')
+        if pos >= 0:
+            authCookie = authCookie + cookie[pos:] + '; '
+        pos = cookie.lower().find('hdea_s')
+        if pos >= 0:
+            authCookie = authCookie + cookie[pos:] + '; '
+    return authCookie
+
+
+def getHLSPlaylist(url, bFindBest=True):
+    '''
+    given a URL, determine if it's an HTTP live streaming playlist and find the best segments to use (only if we dont trust ffmpeg)
+    '''
+    # make sure it's a playlist at all, safe to rsplit
+    urlPath = url.rsplit('?')[0]
+    if False == urlPath.endswith('m3u8'):
+        return url
+
+    isHls = True
+
+    xbmc.log("getHLSPlaylist url=" + url, xbmc.LOGDEBUG)
+    # obtain the playlist and save any cookie that might be set. urlllib will join Set-Cookie headers based on RFC (one of them :)
+    req = urllib2.Request(url)
+    response = urllib2.urlopen(req)
+    playlistStr = response.read()
+    #hls_cookie = cleanCookie(response.info().getheader('Set-Cookie'))
+    response.close()
+
+    # parse m3u8 to find the best bitrate segments. if not variant, return original URL
+    urlPath = url
+    if bFindBest == True:
+        variant_m3u8 = m3u8.loads(playlistStr)
+        if True == variant_m3u8.is_variant:
+            maxBW=0
+            maxIdx=0
+            for i, playlist in enumerate(variant_m3u8.playlists):
+                bw = int(playlist.stream_info.bandwidth)
+            if bw > maxBW:
+                maxBW = bw
+                maxIdx = i
+            playlist = variant_m3u8.playlists[maxIdx]
+
+            # build segments URL
+            # TODO: Pass this to real url parsing engine, since it might be relative and might be absalute
+            
+            #urlPath = urlPath.rsplit('/', 1)[0] # removes the filename
+            #urlPath = urlPath + '/' + playlist.uri
+            return playlist.uri
+
+        return urlPath
+
+
 def playMovie(item, url = None):  
     DelCookies()
     _url = url
     if url is None:
         _url = item.getStreamUrl()
+
+    _url = getHLSPlaylist(_url, True)
+
     _hls_cookie = item.getHLSCookie()
     xbmc.log('vod_item --> %s' % (item.getId()), xbmc.LOGDEBUG)
     xbmc.log('playable _url --> %s' % (_url), xbmc.LOGDEBUG)
@@ -314,6 +384,7 @@ params = getParams(sys.argv[2])
 categoryId = None
 categoryLink = None
 itemId = None
+itemlink = None
 
 try:
     categoryId=urllib.unquote_plus(params["category"])

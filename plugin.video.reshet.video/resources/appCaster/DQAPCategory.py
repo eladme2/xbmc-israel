@@ -6,6 +6,7 @@
 '''
 from APModel import APModel
 import json
+import xbmc
 
 class DQAPCategory(APModel):
     '''
@@ -24,6 +25,8 @@ class DQAPCategory(APModel):
         '''
         Constructor
         '''
+        xbmc.log("DQAPCategory c`tor()", xbmc.LOGDEBUG)
+
         self.innerDictionary = params
         
         self.__id = '-1' # Fake id in order to bypass checks on main #str(self.get('id'))
@@ -31,7 +34,10 @@ class DQAPCategory(APModel):
         #self.__thumbNameImageURL = self.get('large')
         self.__title = self.get('title')
         #self.__description = self.get('description')
+
         self.__link = self.get('link')
+        xbmc.log("DQAPCategory category link  = " + self.__link, xbmc.LOGDEBUG)
+
 	self.__name = self.get('name')
 
 	# for the new incarnation of the plugin we'll have an images_json section
